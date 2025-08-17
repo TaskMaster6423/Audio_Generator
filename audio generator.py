@@ -5,10 +5,10 @@ from threading import Thread
 import subprocess
 import sys
 
-class MKVAudioExtractor:
+class VideoAudioExtractor:
     def __init__(self, root):
         self.root = root
-        self.root.title("MKV Audio Extractor")
+        self.root.title("Video Audio Extractor")
         self.root.geometry("600x400")
         
         # Variables
@@ -61,7 +61,7 @@ class MKVAudioExtractor:
                     'ffmpeg',
                     '-i', input_file,
                     '-q:a', '0',
-                    '-map', '0:a',
+                    '-map', '0:a:0',
                     '-acodec', 'libmp3lame',
                     output_file
                 ]
@@ -70,7 +70,7 @@ class MKVAudioExtractor:
                     'ffmpeg',
                     '-i', input_file,
                     '-q:a', '0',
-                    '-map', '0:a',
+                    '-map', '0:a:0',
                     '-acodec', 'aac',
                     output_file
                 ]
@@ -78,13 +78,18 @@ class MKVAudioExtractor:
                 cmd = [
                     'ffmpeg',
                     '-i', input_file,
-                    '-map', '0:a',
+                    '-map', '0:a:0',
                     '-acodec', 'flac',
                     output_file
                 ]
+                
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            creation_flags = subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
             
             # Run FFmpeg command
-            subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=creation_flags
+)
             return True
         except subprocess.CalledProcessError as e:
             print(f"Error extracting audio: {e.stderr.decode('utf-8')}")
@@ -113,44 +118,55 @@ class MKVAudioExtractor:
             messagebox.showerror("Error", "Please select both source and output folders!")
             return
         
-        mkv_files = []
+        # Supported video file extensions
+        video_extensions = (
+            '.mkv', '.mp4', '.avi', '.mov', '.wmv', '.flv', 
+            '.webm', '.mpeg', '.mpg', '.m4v', '.3gp', '.ogv'
+        )
+        
+        video_files = []
         for root, _, files in os.walk(input_folder):
             for file in files:
-                if file.lower().endswith('.mkv'):
-                    mkv_files.append(os.path.join(root, file))
+                if file.lower().endswith(video_extensions):
+                    video_files.append(os.path.join(root, file))
         
-        if not mkv_files:
-            messagebox.showinfo("Info", "No MKV files found in the source folder!")
+        if not video_files:
+            messagebox.showinfo("Info", "No video files found in the source folder!")
             return
         
-        self.status.set(f"Found {len(mkv_files)} MKV files. Starting extraction...")
+        self.status.set(f"Found {len(video_files)} video files. Starting extraction...")
         self.progress.set(0)
         
         Thread(
             target=self.extract_audio_files,
-            args=(input_folder, output_folder, mkv_files, audio_format),
+            args=(input_folder, output_folder, video_files, audio_format),
             daemon=True
         ).start()
     
-    def extract_audio_files(self, input_folder, output_folder, mkv_files, audio_format):
-        total_files = len(mkv_files)
-        for i, input_path in enumerate(mkv_files):
+    def extract_audio_files(self, input_folder, output_folder, video_files, audio_format):
+        total_files = len(video_files)
+        success_count = 0
+        
+        for i, input_path in enumerate(video_files):
             rel_path = os.path.relpath(input_path, input_folder)
-            audio_rel_path = os.path.splitext(rel_path)[0] + f'.{audio_format}'
-            output_path = os.path.join(output_folder, audio_rel_path)
+            base_name = os.path.splitext(rel_path)[0]
+            output_path = os.path.join(output_folder, f"{base_name}.{audio_format}")
             
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             
             self.status.set(f"Extracting: {rel_path} ({i+1}/{total_files})")
             success = self.extract_audio(input_path, output_path, audio_format)
             
+            if success:
+                success_count += 1
+            
             self.progress.set((i + 1) / total_files * 100)
             self.root.update_idletasks()
         
-        self.status.set(f"Completed! Extracted {total_files} audio files")
-        messagebox.showinfo("Success", "Audio extraction complete!")
+        self.status.set(f"Completed! Extracted {success_count} of {total_files} audio files")
+        messagebox.showinfo("Success", f"Audio extraction complete!\n\nSuccessfully extracted {success_count} of {total_files} files.")
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = MKVAudioExtractor(root)
+    app = VideoAudioExtractor(root)
     root.mainloop()
